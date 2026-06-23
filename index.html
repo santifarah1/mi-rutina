@@ -140,6 +140,15 @@
   .btn-ok{background:var(--accent);color:#0a1f13;}
   .btn-ok.danger{background:var(--down);color:#2a0a0a;}
 
+  .bw-toggle{display:flex;align-items:center;gap:11px;padding:12px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;margin-bottom:14px;cursor:pointer;}
+  .bw-check{flex:0 0 22px;height:22px;border-radius:6px;border:2px solid var(--line);background:var(--bg);display:flex;align-items:center;justify-content:center;transition:.15s;}
+  .bw-check svg{width:13px;height:13px;opacity:0;transition:.15s;}
+  .bw-toggle.on .bw-check{background:var(--accent);border-color:var(--accent);}
+  .bw-toggle.on .bw-check svg{opacity:1;}
+  .bw-txt{display:flex;flex-direction:column;gap:2px;}
+  .bw-txt b{font-size:13.5px;font-weight:600;}
+  .bw-txt small{font-size:11.5px;color:var(--txt-dim);line-height:1.3;}
+
   /* summary cards */
   .sum-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
   .sum-card{background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:13px;}
@@ -204,6 +213,10 @@
       <div class="field"><label>Series</label><input type="number" id="mS" inputmode="numeric" placeholder="3"></div>
       <div class="field"><label>Reps</label><input type="number" id="mR" inputmode="numeric" placeholder="12"></div>
     </div>
+    <label class="bw-toggle" id="mBwToggle">
+      <span class="bw-check" id="mBwCheck"><svg viewBox="0 0 24 24" fill="none" stroke="#0a1f13" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>
+      <span class="bw-txt"><b>Peso corporal</b><small>Sin kilos: solo registrás repeticiones (abdominales, dominadas, plancha…)</small></span>
+    </label>
     <div class="modal-actions">
       <button class="btn-cancel" id="exCancel">Cancelar</button>
       <button class="btn-ok" id="exOk">Guardar</button>
@@ -297,8 +310,8 @@ const DEFAULT_ROUTINE = {
     {id:"l2",n:"Leg extension (cuádriceps)",tag:"Piernas",s:4,r:12},
     {id:"l3",n:"Hack (cuádriceps)",tag:"Piernas",s:4,r:12},
     {id:"l4",n:"Gemelos",tag:"Piernas",s:3,r:15},
-    {id:"l5",n:"Inf en paralelas",tag:"Abdominales",s:3,r:15},
-    {id:"l6",n:"Cruzados",tag:"Oblicuos",s:3,r:16},
+    {id:"l5",n:"Inf en paralelas",tag:"Abdominales",s:3,r:15,bw:true},
+    {id:"l6",n:"Cruzados",tag:"Oblicuos",s:3,r:16,bw:true},
   ],
   "Mar":[
     {id:"m1",n:"Pull over con manc/polea",tag:"Espalda",s:3,r:12},
@@ -315,8 +328,8 @@ const DEFAULT_ROUTINE = {
     {id:"j3",n:"Hip thrust",tag:"Glúteos",s:4,r:12},
     {id:"j4",n:"Leg curl",tag:"Piernas",s:4,r:12},
     {id:"j5",n:"Leg extension",tag:"Piernas",s:4,r:12},
-    {id:"j6",n:"Banco (abdominales)",tag:"Abdominales",s:3,r:12},
-    {id:"j7",n:"Banco (oblicuos)",tag:"Oblicuos",s:3,r:12},
+    {id:"j6",n:"Banco (abdominales)",tag:"Abdominales",s:3,r:12,bw:true},
+    {id:"j7",n:"Banco (oblicuos)",tag:"Oblicuos",s:3,r:12,bw:true},
   ],
   "Vie":[
     {id:"v1",n:"Press banco inclinado",tag:"Pecho",s:4,r:10},
@@ -359,17 +372,23 @@ function exKey(name){ return name.toLowerCase().normalize("NFD").replace(/[\u030
 function todayKey(){const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
 function todayShort(){ return DAYS[(new Date().getDay()+6)%7]; }
 function fmtDate(key){const[y,m,d]=key.split("-");return d+"/"+m;}
+// peso a número aceptando coma decimal; reps a entero
+function parseW(v){ if(v===""||v==null)return NaN; return parseFloat(String(v).replace(",",".")); }
+function fmtW(w){ return Number.isInteger(w)?String(w):String(w).replace(".",","); }
 
 /* ===== HISTORIAL helpers (basado en exKey) ===== */
 function exHist(name){ return state.history[exKey(name)]||[]; }
 function lastEntry(name){const h=exHist(name);return h.length?h[h.length-1]:null;}
 function prevEntry(name){const h=exHist(name);return h.length>=2?h[h.length-2]:null;}
 function entryTopWeight(e){ return Math.max(...e.sets.map(s=>s.w)); }
-function prBest(name){const h=exHist(name);if(!h.length)return null;return Math.max(...h.map(entryTopWeight));}
-function trendFor(name){
+function entryTopReps(e){ return Math.max(...e.sets.map(s=>s.r||0)); }
+// métrica de progreso: peso máx (normal) o reps máx (peso corporal)
+function entryMetric(e,bw){ return bw ? entryTopReps(e) : entryTopWeight(e); }
+function prBest(name,bw){const h=exHist(name);if(!h.length)return null;return Math.max(...h.map(e=>entryMetric(e,bw)));}
+function trendFor(name,bw){
   const last=lastEntry(name),prev=prevEntry(name);
   if(!last||!prev)return null;
-  const a=entryTopWeight(last),b=entryTopWeight(prev);
+  const a=entryMetric(last,bw),b=entryMetric(prev,bw);
   if(a>b)return"up";if(a<b)return"down";return"flat";
 }
 
@@ -442,7 +461,7 @@ function renderMain(){
 
   exs.forEach((ex,idx)=>{
     const checked=!!state.checks[tk][ex.id];
-    const last=lastEntry(ex.n),trend=trendFor(ex.n),pr=prBest(ex.n);
+    const last=lastEntry(ex.n),trend=trendFor(ex.n,ex.bw),pr=prBest(ex.n,ex.bw);
 
     const card=document.createElement("div");
     card.className="ex"+(checked?" done":"")+(editMode?" editing":"");
@@ -453,11 +472,13 @@ function renderMain(){
       let tr="";
       if(trend){
         const sym=trend==="up"?"▲":trend==="down"?"▼":"=";
-        const lbl=trend==="up"?"subiste":trend==="down"?"bajaste":"igual";
+        const lbl=trend==="up"?(ex.bw?"más reps":"subiste"):trend==="down"?(ex.bw?"menos reps":"bajaste"):"igual";
         tr=`<span class="trend ${trend}">${sym} ${lbl}</span>`;
       }
-      const top=entryTopWeight(last);
-      lastHtml=`<div class="ex-last">Última vez: <b>${top}kg</b> · ${last.sets.length} series ${tr}</div>`;
+      const resumen = ex.bw
+        ? `<b>${entryTopReps(last)} reps</b> máx · ${last.sets.length} series`
+        : `<b>${entryTopWeight(last)}kg</b> · ${last.sets.length} series`;
+      lastHtml=`<div class="ex-last">Última vez: ${resumen} ${tr}</div>`;
     }
 
     const handle=editMode?`<div class="drag-handle" draggable="true">⠿</div>`:`
@@ -481,7 +502,7 @@ function renderMain(){
         <button class="mini-btn danger ed-del">🗑 Borrar</button>
       </div>`:`
       <div class="ex-body"><div class="ex-body-inner">
-        <div class="series-head"><span class="col-n">#</span><span class="col-w">Peso (kg)</span><span class="col-r">Reps</span><span class="col-x"></span></div>
+        <div class="series-head"><span class="col-n">#</span>${ex.bw?"":`<span class="col-w">Peso (kg)</span>`}<span class="col-r">Reps</span><span class="col-x"></span></div>
         <div class="sets-list"></div>
         <button class="add-serie">+ Agregar serie</button>
         <button class="btn-save">Guardar entrenamiento</button>
@@ -492,7 +513,7 @@ function renderMain(){
           </div>
         </div>
         <div class="graph-wrap">
-          <h4><span>Progreso de peso</span>${pr!==null?`<span class="pr-badge">Récord: ${pr}kg</span>`:""}</h4>
+          <h4><span>Progreso de ${ex.bw?"reps":"peso"}</span>${pr!==null?`<span class="pr-badge">Récord: ${pr}${ex.bw?" reps":"kg"}</span>`:""}</h4>
           <div class="graph-holder"></div>
         </div>
         <div class="history"><h4>Historial</h4><div class="hist-list"></div></div>
@@ -541,14 +562,31 @@ function renderMain(){
         setsList.innerHTML="";
         drafts[ex.id].forEach((st,i)=>{
           const row=document.createElement("div");
-          row.className="serie-row"+((st.w!==""&&st.w!=null)?" logged":"");
+          const filled = ex.bw ? (st.r!==""&&st.r!=null) : (st.w!==""&&st.w!=null);
+          row.className="serie-row"+(filled?" logged":"");
+          const wInput = ex.bw ? "" : `<input type="text" inputmode="decimal" class="s-w" placeholder="0" value="${st.w}">`;
           row.innerHTML=`
             <div class="serie-n">${i+1}</div>
-            <input type="number" inputmode="decimal" class="s-w" placeholder="0" value="${st.w}">
-            <input type="number" inputmode="numeric" class="s-r" placeholder="${ex.r}" value="${st.r}">
+            ${wInput}
+            <input type="text" inputmode="numeric" class="s-r" placeholder="${ex.r}" value="${st.r}">
             <button class="serie-del">×</button>`;
-          row.querySelector(".s-w").oninput=(e)=>{drafts[ex.id][i].w=e.target.value;row.classList.toggle("logged",e.target.value!=="");saveDrafts();};
-          row.querySelector(".s-r").oninput=(e)=>{drafts[ex.id][i].r=e.target.value;saveDrafts();};
+          if(!ex.bw){
+            row.querySelector(".s-w").oninput=(e)=>{
+              // aceptar dígitos y una sola coma o punto como separador decimal
+              let v=e.target.value.replace(/[^0-9.,]/g,"");
+              const firstSep=v.search(/[.,]/);
+              if(firstSep!==-1){ v=v.slice(0,firstSep+1)+v.slice(firstSep+1).replace(/[.,]/g,""); }
+              e.target.value=v;
+              drafts[ex.id][i].w=v;
+              row.classList.toggle("logged",v!=="");saveDrafts();
+            };
+          }
+          row.querySelector(".s-r").oninput=(e)=>{
+            e.target.value=e.target.value.replace(/[^0-9]/g,"");
+            drafts[ex.id][i].r=e.target.value;
+            if(ex.bw)row.classList.toggle("logged",e.target.value!=="");
+            saveDrafts();
+          };
           row.querySelector(".serie-del").onclick=()=>{drafts[ex.id].splice(i,1);saveDrafts();renderSets();};
           setsList.appendChild(row);
         });
@@ -565,7 +603,7 @@ function renderMain(){
       });
 
       // graph
-      drawGraph(card.querySelector(".graph-holder"),ex.n);
+      drawGraph(card.querySelector(".graph-holder"),ex.n,ex.bw);
 
       // history
       const histList=card.querySelector(".hist-list");
@@ -575,12 +613,14 @@ function renderMain(){
         histList.innerHTML="";
         [...h].reverse().forEach((e,i)=>{
           const realIdx=h.length-1-i;
-          const top=entryTopWeight(e);
-          const setsTxt=e.sets.map(s=>`${s.w}×${s.r}`).join("  ");
+          const setsTxt = ex.bw
+            ? e.sets.map(s=>`${s.r}`).join("  ")
+            : e.sets.map(s=>`${fmtW(s.w)}×${s.r}`).join("  ");
+          const val = ex.bw ? `${entryTopReps(e)} reps` : `${fmtW(entryTopWeight(e))}kg`;
           const row=document.createElement("div");
           row.className="hist-row";
           row.innerHTML=`<div><div class="hist-date">${fmtDate(e.d)}</div><div class="hist-sets">${setsTxt}</div></div>
-            <span class="hist-val">${top}kg</span>
+            <span class="hist-val">${val}</span>
             <button class="hist-del">×</button>`;
           row.querySelector(".hist-del").onclick=()=>{
             const key=exKey(ex.n);
@@ -594,12 +634,21 @@ function renderMain(){
 
       // guardar entrenamiento
       card.querySelector(".btn-save").onclick=()=>{
-        const sets=drafts[ex.id].filter(s=>s.w!==""&&s.w!=null&&!isNaN(parseFloat(s.w)))
-          .map(s=>({w:parseFloat(s.w),r:parseInt(s.r)||ex.r}));
-        if(!sets.length){showToast("Cargá al menos una serie con peso");return;}
+        let sets;
+        if(ex.bw){
+          // peso corporal: valen las series con reps cargadas, peso=0
+          sets=drafts[ex.id].filter(s=>s.r!==""&&s.r!=null&&!isNaN(parseInt(s.r)))
+            .map(s=>({w:0,r:parseInt(s.r)}));
+          if(!sets.length){showToast("Cargá al menos una serie con reps");return;}
+        }else{
+          sets=drafts[ex.id].filter(s=>!isNaN(parseW(s.w)))
+            .map(s=>({w:parseW(s.w),r:parseInt(s.r)||ex.r}));
+          if(!sets.length){showToast("Cargá al menos una serie con peso");return;}
+        }
         const key=exKey(ex.n);
         state.history[key]=state.history[key]||[];
-        const isPR = pr===null || Math.max(...sets.map(s=>s.w))>pr;
+        const newMetric = ex.bw ? Math.max(...sets.map(s=>s.r)) : Math.max(...sets.map(s=>s.w));
+        const isPR = pr===null || newMetric>pr;
         state.history[key].push({d:todayKey(),sets});
         state.checks[tk][ex.id]=true;
         delete drafts[ex.id];saveDrafts();
@@ -620,9 +669,10 @@ function renderMain(){
 }
 
 /* ===== GRÁFICO (SVG simple, sin librerías) ===== */
-function drawGraph(holder,name){
+function drawGraph(holder,name,bw){
   const h=exHist(name);
-  const pts=h.map(e=>({d:e.d,w:entryTopWeight(e)}));
+  const pts=h.map(e=>({d:e.d,w:entryMetric(e,bw)}));
+  const unit = bw ? " reps" : "kg";
   if(pts.length<2){
     holder.innerHTML='<div class="graph-empty">Necesitás al menos 2 entrenamientos para ver la curva.</div>';
     return;
@@ -646,7 +696,7 @@ function drawGraph(holder,name){
     ${dots}
   </svg>
   <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--txt-dim);margin-top:3px;">
-    <span>${fmtDate(pts[0].d)} · ${min}kg</span><span>${fmtDate(pts[pts.length-1].d)} · ${pts[pts.length-1].w}kg</span>
+    <span>${fmtDate(pts[0].d)} · ${fmtW(min)}${unit}</span><span>${fmtDate(pts[pts.length-1].d)} · ${fmtW(pts[pts.length-1].w)}${unit}</span>
   </div>`;
 }
 
@@ -707,7 +757,11 @@ function playBeep(){
 
 /* ===== MODAL EJERCICIO ===== */
 const $modalEx=document.getElementById("modalEx");
+const $bwToggle=document.getElementById("mBwToggle");
 let editingExId=null;
+let mBw=false;
+function setBw(v){ mBw=v; $bwToggle.classList.toggle("on",v); }
+$bwToggle.onclick=()=>setBw(!mBw);
 function openExModal(id){
   editingExId=id;
   document.getElementById("exModalTitle").textContent=id?"Editar ejercicio":"Nuevo ejercicio";
@@ -715,7 +769,8 @@ function openExModal(id){
   if(id){
     const ex=state.routine[currentDay].find(e=>e.id===id);
     g("mName").value=ex.n;g("mTag").value=ex.tag||"";g("mS").value=ex.s;g("mR").value=ex.r;
-  }else{g("mName").value="";g("mTag").value="";g("mS").value="";g("mR").value="";}
+    setBw(!!ex.bw);
+  }else{g("mName").value="";g("mTag").value="";g("mS").value="";g("mR").value="";setBw(false);}
   $modalEx.classList.add("show");
   setTimeout(()=>g("mName").focus(),100);
 }
@@ -729,8 +784,8 @@ document.getElementById("exOk").onclick=()=>{
   const s=parseInt(g("mS").value)||3,r=parseInt(g("mR").value)||12;
   if(editingExId){
     const ex=state.routine[currentDay].find(e=>e.id===editingExId);
-    ex.n=n;ex.tag=tag;ex.s=s;ex.r=r;
-  }else{state.routine[currentDay].push({id:uid(),n,tag,s,r});}
+    ex.n=n;ex.tag=tag;ex.s=s;ex.r=r;ex.bw=mBw;
+  }else{state.routine[currentDay].push({id:uid(),n,tag,s,r,bw:mBw});}
   save();closeExModal();renderAll();
 };
 
@@ -836,24 +891,33 @@ function openSummary(){
   const now=new Date();
   const weekAgo=new Date(now);weekAgo.setDate(now.getDate()-6);
   function inWeek(key){const[y,m,d]=key.split("-").map(Number);const dt=new Date(y,m-1,d);return dt>=new Date(weekAgo.getFullYear(),weekAgo.getMonth(),weekAgo.getDate());}
-  let trainDays=new Set(),totalKg=0,prs=0,totalSets=0;
+  let trainDays=new Set(),prs=0,totalSets=0;
+  // métrica robusta por entrada: si todos los sets son peso 0, mido por reps
+  function metricOf(e){
+    const allZero=e.sets.every(s=>!s.w);
+    return allZero?entryTopReps(e):entryTopWeight(e);
+  }
   Object.values(state.history).forEach(arr=>{
     arr.forEach((e,i)=>{
       if(inWeek(e.d)){
         trainDays.add(e.d);
-        e.sets.forEach(s=>{totalKg+=s.w*(s.r||1);totalSets++;});
-        // PR: si este entrenamiento supera todos los anteriores del mismo ejercicio
-        const prevMax=i>0?Math.max(...arr.slice(0,i).map(entryTopWeight)):0;
-        if(entryTopWeight(e)>prevMax&&i>0)prs++;
+        totalSets+=e.sets.length;
+        const prevMax=i>0?Math.max(...arr.slice(0,i).map(metricOf)):0;
+        if(i>0&&metricOf(e)>prevMax)prs++;
       }
     });
+  });
+  // ejercicios completados (tildados) en la ventana de 7 días
+  let doneCount=0;
+  Object.keys(state.checks).forEach(dk=>{
+    if(inWeek(dk)) doneCount+=Object.keys(state.checks[dk]).length;
   });
   document.getElementById("summarySub").textContent="Últimos 7 días · "+state.stageName;
   const grid=document.getElementById("sumGrid");
   grid.innerHTML=`
     <div class="sum-card"><div class="v">${trainDays.size}</div><div class="l">días entrenados</div></div>
+    <div class="sum-card"><div class="v">${doneCount}</div><div class="l">ejercicios completados</div></div>
     <div class="sum-card"><div class="v">${totalSets}</div><div class="l">series registradas</div></div>
-    <div class="sum-card"><div class="v">${Math.round(totalKg).toLocaleString("es-AR")}</div><div class="l">kg movidos (peso×reps)</div></div>
     <div class="sum-card"><div class="v">${prs}</div><div class="l">récords nuevos</div></div>`;
 }
 
