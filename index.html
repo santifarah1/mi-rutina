@@ -167,6 +167,23 @@
   .sum-card{background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:13px;}
   .sum-card .v{font-size:22px;font-weight:800;color:var(--accent);font-variant-numeric:tabular-nums;line-height:1;}
   .sum-card .l{font-size:11.5px;color:var(--txt-dim);margin-top:5px;}
+
+  /* swatches */
+  .swatches{display:flex;gap:10px;flex-wrap:wrap;}
+  .swatch{width:46px;height:46px;border-radius:13px;border:2.5px solid transparent;cursor:pointer;padding:0;}
+  .swatch.sel{border-color:#fff;box-shadow:0 0 0 2px rgba(255,255,255,.25);}
+
+  /* calendario */
+  .cal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+  .cal-nav button{background:var(--surface-2);border:1px solid var(--line);color:var(--txt);width:34px;height:34px;border-radius:9px;font-size:16px;cursor:pointer;}
+  .cal-nav .cal-title{font-size:13.5px;font-weight:700;text-transform:capitalize;}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
+  .cal-dow{text-align:center;font-size:10px;color:var(--txt-dim);font-weight:700;padding-bottom:2px;}
+  .cal-cell{aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:12px;border-radius:9px;color:var(--txt-dim);border:1px solid transparent;}
+  .cal-cell.on{background:var(--accent-dim);color:var(--accent);font-weight:800;border-color:var(--accent);}
+  .cal-cell.today{border-color:var(--txt-dim);}
+  .cal-cell.today.on{border-color:var(--accent);box-shadow:0 0 0 1.5px var(--accent);}
+  .cal-foot{font-size:11px;color:var(--txt-dim);text-align:center;margin-top:8px;}
   .stage-list{margin-top:6px;}
   .stage-item{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px;}
   .stage-item:last-child{border-bottom:none;}
@@ -211,6 +228,7 @@
 <div class="bottom-bar">
   <button id="stagesBtn">Etapas</button>
   <button id="dataBtn">Datos</button>
+  <button id="colorBtn">Ajustes</button>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -281,6 +299,37 @@
     <input type="file" id="importFile" accept="application/json" style="display:none;">
     <div class="modal-actions">
       <button class="btn-cancel" id="dataClose">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal ajustes -->
+<div class="modal-bg" id="modalColor">
+  <div class="modal">
+    <h3>Ajustes</h3>
+    <div class="field">
+      <label>Organización</label>
+      <div style="display:flex;gap:8px;margin-top:4px;">
+        <button class="mini-btn mode-btn" id="modeDays" style="flex:1;justify-content:center;padding:11px;">Por días de semana</button>
+        <button class="mini-btn mode-btn" id="modeCustom" style="flex:1;justify-content:center;padding:11px;">Por rutinas</button>
+      </div>
+      <div style="font-size:11.5px;color:var(--txt-dim);margin-top:8px;line-height:1.4;">Por días: pestañas Lun a Dom, la app te lleva al día de hoy. Por rutinas: pestañas con nombre libre (Espalda, Piernas…), vos elegís cuál hacer. El historial de pesos se comparte igual.</div>
+    </div>
+    <div class="field" id="routineMgr" style="display:none;">
+      <label>Tus rutinas</label>
+      <div id="routineList"></div>
+      <button class="mini-btn" id="addRoutine" style="width:100%;justify-content:center;padding:10px;margin-top:8px;">+ Agregar rutina</button>
+    </div>
+    <div class="field">
+      <label>Color de la app</label>
+      <div class="swatches" id="swatches" style="margin-top:4px;"></div>
+    </div>
+    <div class="field">
+      <label>O elegí uno personalizado</label>
+      <input type="color" id="customColor" value="#4ade80" style="width:100%;height:44px;padding:4px;background:var(--surface-2);border:1px solid var(--line);border-radius:9px;cursor:pointer;">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" id="colorClose">Listo</button>
     </div>
   </div>
 </div>
@@ -377,6 +426,71 @@ state.history = state.history || {};
 state.checks  = state.checks  || {};
 state.stages  = state.stages  || [];
 state.lastRest = state.lastRest || 60;
+state.accent = state.accent || "#4ade80";
+state.mode = state.mode || "days";                 // "days" | "custom"
+state.customList = state.customList || [];          // [{id,name}]
+state.customRoutine = state.customRoutine || {};    // {id:[ejercicios]}
+
+/* ===== MODO (por días / por rutinas) ===== */
+function mode(){ return state.mode||"days"; }
+function keysList(){ return mode()==="days" ? DAYS : state.customList.map(r=>r.id); }
+function labelOf(k){
+  if(mode()==="days") return DAY_FULL[k];
+  const r=state.customList.find(x=>x.id===k); return r?r.name:k;
+}
+function shortLabelOf(k){ return mode()==="days" ? k : labelOf(k); }
+function arrOf(k){
+  if(mode()==="days"){ state.routine[k]=state.routine[k]||[]; return state.routine[k]; }
+  state.customRoutine[k]=state.customRoutine[k]||[]; return state.customRoutine[k];
+}
+function setArr(k,a){ if(mode()==="days") state.routine[k]=a; else state.customRoutine[k]=a; }
+// todos los ejercicios de ambos modos (para chequeos globales de nombre)
+function allExercises(){
+  const out=[];
+  DAYS.forEach(d=>{(state.routine[d]||[]).forEach(e=>out.push(e));});
+  Object.values(state.customRoutine).forEach(arr=>arr.forEach(e=>out.push(e)));
+  return out;
+}
+// al pasar a rutinas por primera vez, arranco copiando los días no vacíos
+function seedCustomFromDays(){
+  if(state.customList.length) return;
+  DAYS.forEach(d=>{
+    if(state.routine[d]&&state.routine[d].length){
+      const id=uid();
+      state.customList.push({id,name:DAY_FULL[d]});
+      state.customRoutine[id]=state.routine[d].map(e=>({id:uid(),n:e.n,tag:e.tag,s:e.s,r:e.r,bw:e.bw}));
+    }
+  });
+  if(!state.customList.length){
+    const id=uid();
+    state.customList.push({id,name:"Rutina 1"});
+    state.customRoutine[id]=[];
+  }
+}
+
+/* ===== TEMA / COLOR ===== */
+function applyTheme(){
+  const a=state.accent;
+  const root=document.documentElement.style;
+  root.setProperty("--accent",a);
+  root.setProperty("--accent-dim",a+"29"); // mismo color con transparencia para fondos
+  const arc=document.getElementById("restArc");
+  if(arc)arc.setAttribute("stroke",a);
+}
+
+// migración: fusiona historiales huérfanos (claves sin ejercicio en la rutina)
+// con un ejercicio actual, solo si hay UN único candidato claro (una clave contiene a la otra)
+(function mergeOrphans(){
+  const routineKeys=new Set();
+  DAYS.forEach(d=>state.routine[d].forEach(ex=>routineKeys.add(exKey(ex.n))));
+  let touched=false;
+  Object.keys(state.history).forEach(hk=>{
+    if(routineKeys.has(hk))return; // no es huérfano
+    const candidates=[...routineKeys].filter(rk=>rk.startsWith(hk+" ")||hk.startsWith(rk+" "));
+    if(candidates.length===1){ mergeHistory(hk,candidates[0]); touched=true; }
+  });
+  if(touched)save();
+})();
 DAYS.forEach(d=>{ if(!state.routine[d]) state.routine[d]=[]; });
 save();
 
@@ -386,6 +500,14 @@ function exKey(name){ return name.toLowerCase().normalize("NFD").replace(/[\u030
 function todayKey(){const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
 function todayShort(){ return DAYS[(new Date().getDay()+6)%7]; }
 function fmtDate(key){const[y,m,d]=key.split("-");return d+"/"+m;}
+// fusiona el historial de una clave en otra (ordenado por fecha) y borra la vieja
+function mergeHistory(fromKey,toKey){
+  if(fromKey===toKey||!state.history[fromKey])return;
+  const merged=(state.history[toKey]||[]).concat(state.history[fromKey]);
+  merged.sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0);
+  state.history[toKey]=merged;
+  delete state.history[fromKey];
+}
 // peso a número aceptando coma decimal; reps a entero
 function parseW(v){ if(v===""||v==null)return NaN; return parseFloat(String(v).replace(",",".")); }
 function fmtW(w){ return Number.isInteger(w)?String(w):String(w).replace(".",","); }
@@ -413,8 +535,8 @@ const $dayTitle=document.getElementById("dayTitle");
 const $stageLabel=document.getElementById("stageLabel");
 const $editToggle=document.getElementById("editToggle");
 
-let currentDay=todayShort();
-if(!DAYS.includes(currentDay))currentDay="Lun";
+let currentDay = mode()==="days" ? todayShort() : (state.lastKey||null);
+if(!keysList().includes(currentDay)) currentDay=keysList()[0]||"Lun";
 let editMode=false;
 // borradores de series por ejercicio: persisten para no perder lo cargado si cerrás la pestaña
 const DRAFT_KEY="miRutina_v3_draft";
@@ -432,12 +554,12 @@ function saveDrafts(){
 
 function renderDays(){
   $days.innerHTML="";
-  DAYS.forEach(d=>{
-    const cnt=state.routine[d].length;
+  keysList().forEach(k=>{
+    const cnt=arrOf(k).length;
     const pill=document.createElement("button");
-    pill.className="day-pill"+(d===currentDay?" active":"")+(d===todayShort()?" today-dot":"");
-    pill.innerHTML=`${d}${cnt?`<span class="cnt">${cnt}</span>`:""}`;
-    pill.onclick=()=>{currentDay=d;renderAll();};
+    pill.className="day-pill"+(k===currentDay?" active":"")+((mode()==="days"&&k===todayShort())?" today-dot":"");
+    pill.innerHTML=`${shortLabelOf(k)}${cnt?`<span class="cnt">${cnt}</span>`:""}`;
+    pill.onclick=()=>{currentDay=k;state.lastKey=k;save();renderAll();};
     $days.appendChild(pill);
   });
 }
@@ -455,14 +577,14 @@ function defaultDraft(ex){
 
 function renderMain(){
   $main.innerHTML="";
-  const exs=state.routine[currentDay];
+  const exs=arrOf(currentDay);
   const tk=todayKey();
   state.checks[tk]=state.checks[tk]||{};
 
   if(!exs.length){
     const e=document.createElement("div");
     e.className="empty-day";
-    e.innerHTML=`<b>${DAY_FULL[currentDay]} libre</b>No hay ejercicios cargados para este día.`;
+    e.innerHTML=`<b>${labelOf(currentDay)} libre</b>No hay ejercicios cargados acá.`;
     $main.appendChild(e);
     if(editMode){
       const add=document.createElement("button");
@@ -514,7 +636,7 @@ function renderMain(){
         <button class="mini-btn ed-up">↑</button>
         <button class="mini-btn ed-down">↓</button>
         <button class="mini-btn ed-edit">✎ Editar</button>
-        <select class="move-select ed-move"><option value="">Mover a…</option>${DAYS.filter(d=>d!==currentDay).map(d=>`<option value="${d}">${DAY_FULL[d]}</option>`).join("")}</select>
+        <select class="move-select ed-move"><option value="">Mover a…</option>${keysList().filter(k=>k!==currentDay).map(k=>`<option value="${k}">${labelOf(k)}</option>`).join("")}</select>
         <button class="mini-btn danger ed-del">🗑 Borrar</button>
       </div>`:`
       <div class="ex-body"><div class="ex-body-inner">
@@ -541,25 +663,25 @@ function renderMain(){
       card.querySelector(".ed-edit").onclick=()=>openExModal(ex.id);
       card.querySelector(".ed-del").onclick=()=>{
         if(confirm(`¿Borrar "${ex.n}" de este día? El historial del ejercicio se conserva.`)){
-          state.routine[currentDay]=state.routine[currentDay].filter(e=>e.id!==ex.id);
+          setArr(currentDay,arrOf(currentDay).filter(e=>e.id!==ex.id));
           save();renderAll();
         }
       };
       card.querySelector(".ed-move").onchange=(e)=>{
         const dest=e.target.value;if(!dest)return;
-        state.routine[currentDay]=state.routine[currentDay].filter(x=>x.id!==ex.id);
-        state.routine[dest].push(ex);
-        save();showToast(`Movido a ${DAY_FULL[dest]}`);renderAll();
+        setArr(currentDay,arrOf(currentDay).filter(x=>x.id!==ex.id));
+        arrOf(dest).push(ex);
+        save();showToast(`Movido a ${labelOf(dest)}`);renderAll();
       };
       // reordenar con flechas
       card.querySelector(".ed-up").onclick=()=>{
         if(idx===0)return;
-        const arr=state.routine[currentDay];
+        const arr=arrOf(currentDay);
         [arr[idx-1],arr[idx]]=[arr[idx],arr[idx-1]];
         save();renderAll();
       };
       card.querySelector(".ed-down").onclick=()=>{
-        const arr=state.routine[currentDay];
+        const arr=arrOf(currentDay);
         if(idx>=arr.length-1)return;
         [arr[idx+1],arr[idx]]=[arr[idx],arr[idx+1]];
         save();renderAll();
@@ -734,17 +856,18 @@ function drawGraph(holder,name,bw){
   const area=line+` L${coords[coords.length-1][0].toFixed(1)} ${padTop+plotH} L${coords[0][0].toFixed(1)} ${padTop+plotH} Z`;
 
   // récord de todos los tiempos: puntito dorado solo si cae dentro de la ventana visible
+  const AC=state.accent||"#4ade80";
   const allTimeMax=Math.max(...all.map(p=>p.w));
   const maxIdx=(dataMax===allTimeMax)?ws.indexOf(allTimeMax):-1;
   const dots=coords.map((c,i)=>{
     if(i===maxIdx) return `<circle cx="${c[0].toFixed(1)}" cy="${c[1].toFixed(1)}" r="5" fill="#facc15" stroke="#0f1115" stroke-width="1.5"/>`;
-    return `<circle cx="${c[0].toFixed(1)}" cy="${c[1].toFixed(1)}" r="3" fill="#4ade80"/>`;
+    return `<circle cx="${c[0].toFixed(1)}" cy="${c[1].toFixed(1)}" r="3" fill="${AC}"/>`;
   }).join("");
 
   holder.innerHTML=`<svg class="graph" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="height:110px;">
     ${refs}
-    <path d="${area}" fill="#4ade8022"/>
-    <path d="${line}" fill="none" stroke="#4ade80" stroke-width="2.5" stroke-linejoin="round"/>
+    <path d="${area}" fill="${AC}22"/>
+    <path d="${line}" fill="none" stroke="${AC}" stroke-width="2.5" stroke-linejoin="round"/>
     ${dots}
   </svg>
   <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--txt-dim);margin-top:3px;">
@@ -756,7 +879,7 @@ function drawGraph(holder,name,bw){
 
 function updateProgress(){
   const tk=todayKey();const checks=state.checks[tk]||{};
-  const exs=state.routine[currentDay];let done=0;
+  const exs=arrOf(currentDay);let done=0;
   exs.forEach(ex=>{if(checks[ex.id])done++;});
   const total=exs.length;const pct=total?Math.round(done/total*100):0;
   document.getElementById("progFill").style.width=pct+"%";
@@ -764,7 +887,7 @@ function updateProgress(){
 }
 
 function renderAll(){
-  $dayTitle.textContent=DAY_FULL[currentDay];
+  $dayTitle.textContent=labelOf(currentDay);
   $stageLabel.textContent=state.stageName;
   renderDays();renderMain();updateProgress();
 }
@@ -832,7 +955,7 @@ function openExModal(id){
   document.getElementById("exModalTitle").textContent=id?"Editar ejercicio":"Nuevo ejercicio";
   const g=(x)=>document.getElementById(x);
   if(id){
-    const ex=state.routine[currentDay].find(e=>e.id===id);
+    const ex=arrOf(currentDay).find(e=>e.id===id);
     g("mName").value=ex.n;g("mTag").value=ex.tag||"";g("mS").value=ex.s;g("mR").value=ex.r;
     setBw(!!ex.bw);
   }else{g("mName").value="";g("mTag").value="";g("mS").value="";g("mR").value="";setBw(false);}
@@ -848,9 +971,15 @@ document.getElementById("exOk").onclick=()=>{
   const tag=g("mTag").value.trim();
   const s=parseInt(g("mS").value)||3,r=parseInt(g("mR").value)||12;
   if(editingExId){
-    const ex=state.routine[currentDay].find(e=>e.id===editingExId);
+    const ex=arrOf(currentDay).find(e=>e.id===editingExId);
+    const oldKey=exKey(ex.n), newKey=exKey(n);
     ex.n=n;ex.tag=tag;ex.s=s;ex.r=r;ex.bw=mBw;
-  }else{state.routine[currentDay].push({id:uid(),n,tag,s,r,bw:mBw});}
+    if(oldKey!==newKey){
+      // fusionar solo si ningún otro ejercicio de la rutina sigue usando el nombre viejo
+      const stillUsed=allExercises().some(e=>e.id!==ex.id&&exKey(e.n)===oldKey);
+      if(!stillUsed) mergeHistory(oldKey,newKey);
+    }
+  }else{arrOf(currentDay).push({id:uid(),n,tag,s,r,bw:mBw});}
   save();closeExModal();renderAll();
 };
 
@@ -888,16 +1017,22 @@ document.getElementById("newStageBtn").onclick=()=>{
 document.getElementById("newStageCancel").onclick=()=>$modalNewStage.classList.remove("show");
 $modalNewStage.onclick=(e)=>{if(e.target===$modalNewStage)$modalNewStage.classList.remove("show");};
 function commitNewStage(copy){
-  let exCount=0;DAYS.forEach(d=>exCount+=state.routine[d].length);
+  let exCount=0;keysList().forEach(k=>exCount+=arrOf(k).length);
   state.stages.push({name:state.stageName,ended:todayKey(),exCount});
   const newName=document.getElementById("newStageName").value.trim()||("Etapa "+(state.stages.length+1));
   state.stageName=newName;
   if(copy){
-    // copiar rutina, regenerando ids (el historial vive por nombre, no por id)
-    const nr={};DAYS.forEach(d=>{nr[d]=state.routine[d].map(e=>({id:uid(),n:e.n,tag:e.tag,s:e.s,r:e.r}));});
-    state.routine=nr;
+    // copiar la rutina del modo activo, regenerando ids (el historial vive por nombre, no por id)
+    if(mode()==="days"){
+      const nr={};DAYS.forEach(d=>{nr[d]=(state.routine[d]||[]).map(e=>({id:uid(),n:e.n,tag:e.tag,s:e.s,r:e.r,bw:e.bw}));});
+      state.routine=nr;
+    }else{
+      const nc={};state.customList.forEach(r=>{nc[r.id]=(state.customRoutine[r.id]||[]).map(e=>({id:uid(),n:e.n,tag:e.tag,s:e.s,r:e.r,bw:e.bw}));});
+      state.customRoutine=nc;
+    }
   }else{
-    const nr={};DAYS.forEach(d=>nr[d]=[]);state.routine=nr;
+    if(mode()==="days"){ const nr={};DAYS.forEach(d=>nr[d]=[]);state.routine=nr; }
+    else{ state.customList.forEach(r=>state.customRoutine[r.id]=[]); }
   }
   save();
   $modalNewStage.classList.remove("show");
@@ -935,6 +1070,8 @@ document.getElementById("importFile").onchange=(e)=>{
         state.stageName=state.stageName||"Etapa 1";
         DAYS.forEach(d=>{if(!state.routine[d])state.routine[d]=[];});
         state.history=state.history||{};state.checks=state.checks||{};state.stages=state.stages||[];
+        state.mode=state.mode||"days";state.customList=state.customList||[];state.customRoutine=state.customRoutine||{};
+        if(!keysList().includes(currentDay))currentDay=keysList()[0]||"Lun";
         save();drafts={};saveDrafts();
         $modalData.classList.remove("show");
         showToast("Datos importados");
@@ -945,6 +1082,93 @@ document.getElementById("importFile").onchange=(e)=>{
   reader.readAsText(f);
   e.target.value="";
 };
+
+/* ===== AJUSTES (modo + color) ===== */
+const $modalColor=document.getElementById("modalColor");
+const PRESETS=["#4ade80","#38bdf8","#f472b6","#fb923c","#a78bfa","#facc15","#f87171","#e7eaf0"];
+function renderSettings(){
+  // modo
+  document.getElementById("modeDays").classList.toggle("on",mode()==="days");
+  document.getElementById("modeDays").style.borderColor=mode()==="days"?"var(--accent)":"";
+  document.getElementById("modeDays").style.color=mode()==="days"?"var(--accent)":"";
+  document.getElementById("modeCustom").style.borderColor=mode()==="custom"?"var(--accent)":"";
+  document.getElementById("modeCustom").style.color=mode()==="custom"?"var(--accent)":"";
+  // gestor de rutinas solo en modo custom
+  document.getElementById("routineMgr").style.display=mode()==="custom"?"block":"none";
+  if(mode()==="custom")renderRoutineList();
+  renderSwatches();
+}
+function renderRoutineList(){
+  const box=document.getElementById("routineList");
+  box.innerHTML="";
+  state.customList.forEach(r=>{
+    const row=document.createElement("div");
+    row.style.cssText="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line);";
+    row.innerHTML=`<span style="flex:1;font-size:13.5px;font-weight:600;">${r.name}</span>
+      <span style="font-size:11px;color:var(--txt-dim);">${(state.customRoutine[r.id]||[]).length} ej.</span>
+      <button class="mini-btn rn">✎</button>
+      <button class="mini-btn danger del">🗑</button>`;
+    row.querySelector(".rn").onclick=()=>{
+      const nm=prompt("Nombre de la rutina:",r.name);
+      if(nm&&nm.trim()){r.name=nm.trim();save();renderSettings();renderAll();}
+    };
+    row.querySelector(".del").onclick=()=>{
+      if(state.customList.length<=1){alert("Tiene que quedar al menos una rutina.");return;}
+      if(confirm(`¿Borrar la rutina "${r.name}" y sus ejercicios? (el historial de pesos se conserva)`)){
+        state.customList=state.customList.filter(x=>x.id!==r.id);
+        delete state.customRoutine[r.id];
+        if(currentDay===r.id)currentDay=keysList()[0];
+        save();renderSettings();renderAll();
+      }
+    };
+    box.appendChild(row);
+  });
+}
+document.getElementById("addRoutine").onclick=()=>{
+  const nm=prompt("Nombre de la nueva rutina (ej: Espalda):");
+  if(nm&&nm.trim()){
+    const id=uid();
+    state.customList.push({id,name:nm.trim()});
+    state.customRoutine[id]=[];
+    save();renderSettings();renderAll();
+  }
+};
+document.getElementById("modeDays").onclick=()=>{
+  if(mode()==="days")return;
+  state.mode="days";currentDay=todayShort();
+  save();renderSettings();renderAll();
+  showToast("Modo: por días de semana");
+};
+document.getElementById("modeCustom").onclick=()=>{
+  if(mode()==="custom")return;
+  state.mode="custom";
+  seedCustomFromDays();
+  currentDay=state.lastKey&&keysList().includes(state.lastKey)?state.lastKey:keysList()[0];
+  save();renderSettings();renderAll();
+  showToast("Modo: por rutinas");
+};
+function renderSwatches(){
+  const box=document.getElementById("swatches");
+  box.innerHTML="";
+  PRESETS.forEach(c=>{
+    const b=document.createElement("button");
+    b.className="swatch"+(state.accent.toLowerCase()===c.toLowerCase()?" sel":"");
+    b.style.background=c;
+    b.onclick=()=>{setAccent(c);};
+    box.appendChild(b);
+  });
+  document.getElementById("customColor").value=state.accent;
+}
+function setAccent(c){
+  state.accent=c;save();
+  applyTheme();
+  renderSwatches();
+  renderAll(); // regenera gráficos con el color nuevo
+}
+document.getElementById("colorBtn").onclick=()=>{renderSettings();$modalColor.classList.add("show");};
+document.getElementById("colorClose").onclick=()=>$modalColor.classList.remove("show");
+$modalColor.onclick=(e)=>{if(e.target===$modalColor)$modalColor.classList.remove("show");};
+document.getElementById("customColor").oninput=(e)=>setAccent(e.target.value);
 
 /* ===== RESUMEN ===== */
 const $modalSummary=document.getElementById("modalSummary");
@@ -959,7 +1183,7 @@ function openSummary(){
 
   // mapa exKey -> nombre lindo y flag bw, desde la rutina actual
   const nameMap={};
-  DAYS.forEach(d=>state.routine[d].forEach(ex=>{nameMap[exKey(ex.n)]={n:ex.n,bw:!!ex.bw};}));
+  allExercises().forEach(ex=>{nameMap[exKey(ex.n)]={n:ex.n,bw:!!ex.bw};});
 
   function metricOf(e,bw){ return bw?entryTopReps(e):entryTopWeight(e); }
 
@@ -992,13 +1216,6 @@ function openSummary(){
     }
   });
 
-  // días entrenados como pills Lun..Dom
-  const trainedShort=new Set([...trainDates].map(k=>{
-    const[y,m,d]=k.split("-").map(Number);
-    return DAYS[(new Date(y,m-1,d).getDay()+6)%7];
-  }));
-  const daysHtml=DAYS.map(d=>`<span class="sw-day${trainedShort.has(d)?" on":""}">${d.slice(0,2)}${trainedShort.has(d)?" ✓":""}</span>`).join("");
-
   function fmtVal(v,bw){ return bw?`${v} reps`:`${fmtW(v)}kg`; }
   function fmtDelta(dl,bw){
     if(dl===null)return`<span class="trend flat">primera vez</span>`;
@@ -1007,22 +1224,62 @@ function openSummary(){
     return`<span class="trend flat">= igual</span>`;
   }
 
-  const recHtml=records.length
-    ? records.map(r=>`<div class="sum-row"><span class="sum-name">🏆 ${r.name}</span><span class="sum-val trend up">${fmtVal(r.val,r.bw)}</span></div>`).join("")
-    : `<div class="sum-empty">Sin récords esta semana. La próxima cae.</div>`;
-
-  // ordeno progresos: subidas primero, después iguales, después bajadas
+  // una sola lista: récords marcados con 🏆, ordenada por mejora
+  const recKeys=new Set(records.map(r=>r.name));
   progress.sort((a,b)=>(b.delta??0)-(a.delta??0));
   const progHtml=progress.length
-    ? progress.map(p=>`<div class="sum-row"><span class="sum-name">${p.name}</span><span class="sum-val">${fmtVal(p.cur,p.bw)} ${fmtDelta(p.delta,p.bw)}</span></div>`).join("")
+    ? progress.map(p=>`<div class="sum-row"><span class="sum-name">${recKeys.has(p.name)?"🏆 ":""}${p.name}</span><span class="sum-val">${fmtVal(p.cur,p.bw)} ${fmtDelta(p.delta,p.bw)}</span></div>`).join("")
     : `<div class="sum-empty">Todavía no registraste entrenamientos esta semana.</div>`;
 
   document.getElementById("summarySub").textContent="Últimos 7 días · "+state.stageName;
   document.getElementById("sumGrid").innerHTML=`
-    <div class="sum-week">${daysHtml}</div>
-    <div class="sum-sec"><h4>Récords de la semana</h4>${recHtml}</div>
-    <div class="sum-sec"><h4>Cómo te fue en cada ejercicio</h4>${progHtml}</div>
-    <div class="sum-foot">${trainDates.size} ${trainDates.size===1?"día entrenado":"días entrenados"} · ${totalSets} series</div>`;
+    <div class="sum-sec">
+      <div class="cal-nav">
+        <button id="calPrev">‹</button>
+        <span class="cal-title" id="calTitle"></span>
+        <button id="calNext">›</button>
+      </div>
+      <div class="cal-grid" id="calGrid"></div>
+      <div class="cal-foot" id="calFoot"></div>
+    </div>
+    <div class="sum-sec"><h4>Cómo te fue (🏆 = récord nuevo)</h4>${progHtml}</div>
+    <div class="sum-foot">${trainDates.size} ${trainDates.size===1?"día entrenado":"días entrenados"} esta semana · ${totalSets} series · ${records.length} ${records.length===1?"récord":"récords"}</div>`;
+  initCalendar();
+}
+
+/* ===== CALENDARIO ===== */
+const MONTHS=["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+let calY=0,calM=0;
+function trainedDatesSet(){
+  const s=new Set();
+  Object.values(state.history).forEach(arr=>arr.forEach(e=>s.add(e.d)));
+  Object.keys(state.checks).forEach(dk=>{ if(Object.keys(state.checks[dk]||{}).length) s.add(dk); });
+  return s;
+}
+function initCalendar(){
+  const now=new Date();
+  calY=now.getFullYear();calM=now.getMonth();
+  document.getElementById("calPrev").onclick=()=>{calM--;if(calM<0){calM=11;calY--;}renderCal();};
+  document.getElementById("calNext").onclick=()=>{calM++;if(calM>11){calM=0;calY++;}renderCal();};
+  renderCal();
+}
+function renderCal(){
+  const tset=trainedDatesSet();
+  document.getElementById("calTitle").textContent=MONTHS[calM]+" "+calY;
+  const first=new Date(calY,calM,1);
+  const startIdx=(first.getDay()+6)%7; // lunes=0
+  const dim=new Date(calY,calM+1,0).getDate();
+  const tk=todayKey();
+  let html=["L","M","M","J","V","S","D"].map(d=>`<span class="cal-dow">${d}</span>`).join("");
+  for(let i=0;i<startIdx;i++)html+=`<span class="cal-cell"></span>`;
+  let cnt=0;
+  for(let d=1;d<=dim;d++){
+    const key=calY+"-"+String(calM+1).padStart(2,"0")+"-"+String(d).padStart(2,"0");
+    const on=tset.has(key);if(on)cnt++;
+    html+=`<span class="cal-cell${on?" on":""}${key===tk?" today":""}">${d}</span>`;
+  }
+  document.getElementById("calGrid").innerHTML=html;
+  document.getElementById("calFoot").textContent=cnt?`Fuiste ${cnt} ${cnt===1?"vez":"veces"} en ${MONTHS[calM]}`:`Sin entrenamientos en ${MONTHS[calM]}`;
 }
 
 /* ===== TOGGLES ===== */
@@ -1044,6 +1301,7 @@ window.addEventListener("beforeunload",(e)=>{
   if(hayPendiente){ e.preventDefault(); e.returnValue=""; }
 });
 
+applyTheme();
 renderAll();
 </script>
 </body>
