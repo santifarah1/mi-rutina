@@ -67,8 +67,10 @@
   .series-head .col-r{flex:1;text-align:center;}
   .series-head .col-x{flex:0 0 30px;}
   .serie-row{display:flex;align-items:center;gap:9px;margin-bottom:8px;}
-  .serie-n{flex:0 0 28px;height:36px;border-radius:8px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--txt-dim);}
-  .serie-row.logged .serie-n{background:var(--accent-dim);color:var(--accent);}
+  .serie-n{flex:0 0 28px;height:36px;border-radius:8px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--txt-dim);border:1px solid var(--line);cursor:pointer;padding:0;}
+  .serie-n:active{transform:scale(.94);}
+  .serie-n.sdone{background:var(--accent);border-color:var(--accent);color:#0a1f13;}
+  .serie-row.logged .serie-n:not(.sdone){background:var(--accent-dim);color:var(--accent);border-color:var(--accent-dim);}
   .serie-row input{flex:1;width:100%;background:var(--surface-2);border:1px solid var(--line);color:var(--txt);font-size:16px;font-weight:600;padding:8px;border-radius:8px;text-align:center;font-variant-numeric:tabular-nums;min-width:0;}
   .serie-row input:focus{outline:none;border-color:var(--accent);}
   .serie-del{flex:0 0 30px;background:none;border:none;color:var(--txt-dim);font-size:18px;cursor:pointer;padding:4px;}
@@ -150,7 +152,18 @@
   .bw-txt small{font-size:11.5px;color:var(--txt-dim);line-height:1.3;}
 
   /* summary cards */
-  .sum-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
+  .sum-grid{margin-bottom:14px;}
+  .sum-week{display:flex;gap:5px;margin-bottom:16px;}
+  .sw-day{flex:1;text-align:center;padding:9px 2px;border-radius:9px;background:var(--surface-2);border:1px solid var(--line);color:var(--txt-dim);font-size:11px;font-weight:700;}
+  .sw-day.on{background:var(--accent-dim);border-color:var(--accent);color:var(--accent);}
+  .sum-sec{margin-bottom:16px;}
+  .sum-sec h4{font-size:11px;color:var(--txt-dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;}
+  .sum-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px;}
+  .sum-row:last-child{border-bottom:none;}
+  .sum-name{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .sum-val{flex:0 0 auto;font-variant-numeric:tabular-nums;font-weight:600;font-size:12.5px;display:flex;gap:7px;align-items:center;}
+  .sum-empty{font-size:12.5px;color:var(--txt-dim);font-style:italic;padding:4px 0;}
+  .sum-foot{text-align:center;font-size:11.5px;color:var(--txt-dim);padding-top:4px;border-top:1px solid var(--line);}
   .sum-card{background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:13px;}
   .sum-card .v{font-size:22px;font-weight:800;color:var(--accent);font-variant-numeric:tabular-nums;line-height:1;}
   .sum-card .l{font-size:11.5px;color:var(--txt-dim);margin-top:5px;}
@@ -196,7 +209,6 @@
 <main id="main"></main>
 
 <div class="bottom-bar">
-  <button id="resetDay">Reiniciar tildes del día</button>
   <button id="stagesBtn">Etapas</button>
   <button id="dataBtn">Datos</button>
 </div>
@@ -207,7 +219,8 @@
 <div class="modal-bg" id="modalEx">
   <div class="modal">
     <h3 id="exModalTitle">Nuevo ejercicio</h3>
-    <div class="field"><label>Nombre</label><input type="text" id="mName" placeholder="Ej: Press banca"></div>
+    <div class="field"><label>Nombre</label><input type="text" id="mName" placeholder="Ej: Press banca">
+    <div style="font-size:11px;color:var(--txt-dim);margin-top:6px;line-height:1.35;">Los ejercicios con el mismo nombre exacto comparten historial de pesos entre días y etapas.</div></div>
     <div class="field"><label>Grupo / músculo</label><input type="text" id="mTag" placeholder="Ej: Pecho"></div>
     <div class="modal-grid">
       <div class="field"><label>Series</label><input type="number" id="mS" inputmode="numeric" placeholder="3"></div>
@@ -326,8 +339,8 @@ const DEFAULT_ROUTINE = {
     {id:"j1",n:"Prensa 45°",tag:"Piernas",s:4,r:12},
     {id:"j2",n:"Peso muerto con barra",tag:"Piernas/Glúteos",s:4,r:10},
     {id:"j3",n:"Hip thrust",tag:"Glúteos",s:4,r:12},
-    {id:"j4",n:"Leg curl",tag:"Piernas",s:4,r:12},
-    {id:"j5",n:"Leg extension",tag:"Piernas",s:4,r:12},
+    {id:"j4",n:"Leg curl (femorales)",tag:"Piernas",s:4,r:12},
+    {id:"j5",n:"Leg extension (cuádriceps)",tag:"Piernas",s:4,r:12},
     {id:"j6",n:"Banco (abdominales)",tag:"Abdominales",s:3,r:12,bw:true},
     {id:"j7",n:"Banco (oblicuos)",tag:"Oblicuos",s:3,r:12,bw:true},
   ],
@@ -363,6 +376,7 @@ state.routine = state.routine || JSON.parse(JSON.stringify(DEFAULT_ROUTINE));
 state.history = state.history || {};
 state.checks  = state.checks  || {};
 state.stages  = state.stages  || [];
+state.lastRest = state.lastRest || 60;
 DAYS.forEach(d=>{ if(!state.routine[d]) state.routine[d]=[]; });
 save();
 
@@ -481,7 +495,7 @@ function renderMain(){
       lastHtml=`<div class="ex-last">Última vez: ${resumen} ${tr}</div>`;
     }
 
-    const handle=editMode?`<div class="drag-handle" draggable="true">⠿</div>`:`
+    const handle=editMode?`<div class="drag-handle">⠿</div>`:`
       <div class="check"><svg viewBox="0 0 24 24" fill="none" stroke="#0a1f13" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div>`;
 
     card.innerHTML=`
@@ -497,6 +511,8 @@ function renderMain(){
       </div>
       ${editMode?`
       <div class="edit-row">
+        <button class="mini-btn ed-up">↑</button>
+        <button class="mini-btn ed-down">↓</button>
         <button class="mini-btn ed-edit">✎ Editar</button>
         <select class="move-select ed-move"><option value="">Mover a…</option>${DAYS.filter(d=>d!==currentDay).map(d=>`<option value="${d}">${DAY_FULL[d]}</option>`).join("")}</select>
         <button class="mini-btn danger ed-del">🗑 Borrar</button>
@@ -511,6 +527,7 @@ function renderMain(){
           <div class="rest-btns">
             <button data-sec="30">30s</button><button data-sec="60">60s</button><button data-sec="90">90s</button><button data-sec="120">120s</button>
           </div>
+          <div style="font-size:11px;color:var(--txt-dim);margin-top:7px;line-height:1.35;">Tip: al terminar una serie, tocá su número (1, 2, 3…) y arranca el descanso solo.</div>
         </div>
         <div class="graph-wrap">
           <h4><span>Progreso de ${ex.bw?"reps":"peso"}</span>${pr!==null?`<span class="pr-badge">Récord: ${pr}${ex.bw?" reps":"kg"}</span>`:""}</h4>
@@ -534,18 +551,19 @@ function renderMain(){
         state.routine[dest].push(ex);
         save();showToast(`Movido a ${DAY_FULL[dest]}`);renderAll();
       };
-      const handleEl=card.querySelector(".drag-handle");
-      handleEl.addEventListener("dragstart",ev=>{ev.dataTransfer.setData("text/plain",idx);card.classList.add("dragging");});
-      handleEl.addEventListener("dragend",()=>card.classList.remove("dragging"));
-      card.addEventListener("dragover",ev=>{ev.preventDefault();card.classList.add("drag-over");});
-      card.addEventListener("dragleave",()=>card.classList.remove("drag-over"));
-      card.addEventListener("drop",ev=>{
-        ev.preventDefault();card.classList.remove("drag-over");
-        const from=parseInt(ev.dataTransfer.getData("text/plain")),to=idx;
-        if(from===to)return;
-        const arr=state.routine[currentDay];const[moved]=arr.splice(from,1);arr.splice(to,0,moved);
+      // reordenar con flechas
+      card.querySelector(".ed-up").onclick=()=>{
+        if(idx===0)return;
+        const arr=state.routine[currentDay];
+        [arr[idx-1],arr[idx]]=[arr[idx],arr[idx-1]];
         save();renderAll();
-      });
+      };
+      card.querySelector(".ed-down").onclick=()=>{
+        const arr=state.routine[currentDay];
+        if(idx>=arr.length-1)return;
+        [arr[idx+1],arr[idx]]=[arr[idx],arr[idx+1]];
+        save();renderAll();
+      };
     } else {
       card.querySelector(".check").onclick=(e)=>{
         e.stopPropagation();
@@ -566,10 +584,17 @@ function renderMain(){
           row.className="serie-row"+(filled?" logged":"");
           const wInput = ex.bw ? "" : `<input type="text" inputmode="decimal" class="s-w" placeholder="0" value="${st.w}">`;
           row.innerHTML=`
-            <div class="serie-n">${i+1}</div>
+            <button class="serie-n${st.done?" sdone":""}" title="Marcar serie hecha y descansar">${st.done?"✓":i+1}</button>
             ${wInput}
             <input type="text" inputmode="numeric" class="s-r" placeholder="${ex.r}" value="${st.r}">
             <button class="serie-del">×</button>`;
+          // tocar el nº de serie: la marca hecha y arranca el descanso con la última duración usada
+          row.querySelector(".serie-n").onclick=()=>{
+            drafts[ex.id][i].done=!drafts[ex.id][i].done;
+            saveDrafts();
+            renderSets();
+            if(drafts[ex.id][i].done) startRest(state.lastRest||60);
+          };
           if(!ex.bw){
             row.querySelector(".s-w").oninput=(e)=>{
               // aceptar dígitos y una sola coma o punto como separador decimal
@@ -671,32 +696,61 @@ function renderMain(){
 /* ===== GRÁFICO (SVG simple, sin librerías) ===== */
 function drawGraph(holder,name,bw){
   const h=exHist(name);
-  const pts=h.map(e=>({d:e.d,w:entryMetric(e,bw)}));
+  const all=h.map(e=>({d:e.d,w:entryMetric(e,bw)}));
   const unit = bw ? " reps" : "kg";
-  if(pts.length<2){
+  if(all.length<2){
     holder.innerHTML='<div class="graph-empty">Necesitás al menos 2 entrenamientos para ver la curva.</div>';
     return;
   }
-  const W=520,H=90,pad=8;
+  // últimas 12 sesiones para que siempre se lea bien
+  const MAXPTS=12;
+  const pts=all.slice(-MAXPTS);
+  const clipped=all.length>MAXPTS;
+
+  const W=520,H=110,padX=8,padTop=12,padBot=22;
   const ws=pts.map(p=>p.w);
-  const min=Math.min(...ws),max=Math.max(...ws);
-  const range=(max-min)||1;
-  const stepX=(W-pad*2)/(pts.length-1);
-  const coords=pts.map((p,i)=>{
-    const x=pad+i*stepX;
-    const y=H-pad-((p.w-min)/range)*(H-pad*2);
-    return [x,y];
-  });
+  const dataMin=Math.min(...ws),dataMax=Math.max(...ws);
+  // escala honesta: margen del 15% del valor (mínimo 2 unidades) para no exagerar cambios chicos
+  const margin=Math.max((dataMax-dataMin)*0.5, dataMax*0.15, 2);
+  let lo=Math.max(0, Math.floor(dataMin-margin));
+  let hi=Math.ceil(dataMax+margin*0.4);
+  if(hi-lo<4)hi=lo+4;
+  const range=hi-lo;
+
+  const plotH=H-padTop-padBot;
+  const stepX=(W-padX*2)/(pts.length-1);
+  const yOf=v=>padTop+plotH-((v-lo)/range)*plotH;
+  const coords=pts.map((p,i)=>[padX+i*stepX, yOf(p.w)]);
+
+  // líneas de referencia: lo, medio, hi
+  const midVal=Math.round((lo+hi)/2);
+  const refs=[{v:hi},{v:midVal},{v:lo}].map(r=>{
+    const y=yOf(r.v).toFixed(1);
+    return `<line x1="${padX}" y1="${y}" x2="${W-padX}" y2="${y}" stroke="#2c313c" stroke-width="1" stroke-dasharray="3 4"/>
+            <text x="${W-padX}" y="${y-3}" text-anchor="end" font-size="9.5" fill="#9aa3b2">${fmtW(r.v)}${bw?"":"kg"}</text>`;
+  }).join("");
+
   const line=coords.map((c,i)=>(i?"L":"M")+c[0].toFixed(1)+" "+c[1].toFixed(1)).join(" ");
-  const area=line+` L${coords[coords.length-1][0].toFixed(1)} ${H-pad} L${coords[0][0].toFixed(1)} ${H-pad} Z`;
-  const dots=coords.map(c=>`<circle cx="${c[0].toFixed(1)}" cy="${c[1].toFixed(1)}" r="3" fill="#4ade80"/>`).join("");
-  holder.innerHTML=`<svg class="graph" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+  const area=line+` L${coords[coords.length-1][0].toFixed(1)} ${padTop+plotH} L${coords[0][0].toFixed(1)} ${padTop+plotH} Z`;
+
+  // récord de todos los tiempos: puntito dorado solo si cae dentro de la ventana visible
+  const allTimeMax=Math.max(...all.map(p=>p.w));
+  const maxIdx=(dataMax===allTimeMax)?ws.indexOf(allTimeMax):-1;
+  const dots=coords.map((c,i)=>{
+    if(i===maxIdx) return `<circle cx="${c[0].toFixed(1)}" cy="${c[1].toFixed(1)}" r="5" fill="#facc15" stroke="#0f1115" stroke-width="1.5"/>`;
+    return `<circle cx="${c[0].toFixed(1)}" cy="${c[1].toFixed(1)}" r="3" fill="#4ade80"/>`;
+  }).join("");
+
+  holder.innerHTML=`<svg class="graph" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="height:110px;">
+    ${refs}
     <path d="${area}" fill="#4ade8022"/>
     <path d="${line}" fill="none" stroke="#4ade80" stroke-width="2.5" stroke-linejoin="round"/>
     ${dots}
   </svg>
   <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--txt-dim);margin-top:3px;">
-    <span>${fmtDate(pts[0].d)} · ${fmtW(min)}${unit}</span><span>${fmtDate(pts[pts.length-1].d)} · ${fmtW(pts[pts.length-1].w)}${unit}</span>
+    <span>${clipped?"últ. "+MAXPTS+" · ":""}${fmtDate(pts[0].d)}</span>
+    <span style="color:#facc15;">● récord: ${fmtW(allTimeMax)}${unit}</span>
+    <span>${fmtDate(pts[pts.length-1].d)} · ${fmtW(pts[pts.length-1].w)}${unit}</span>
   </div>`;
 }
 
@@ -721,9 +775,16 @@ const $restT=document.getElementById("restT");
 const $restArc=document.getElementById("restArc");
 let restInt=null,restLeft=0,restTotal=0;
 const ARC=628;
+let wakeLock=null;
+async function acquireWakeLock(){
+  try{ if("wakeLock" in navigator) wakeLock=await navigator.wakeLock.request("screen"); }catch(e){}
+}
+function releaseWakeLock(){ try{ if(wakeLock){wakeLock.release();wakeLock=null;} }catch(e){} }
 function startRest(sec){
   restTotal=sec;restLeft=sec;
+  state.lastRest=sec;save();
   $restOverlay.classList.add("show");
+  acquireWakeLock(); // mantiene la pantalla despierta durante el descanso
   updateRestUI();
   clearInterval(restInt);
   restInt=setInterval(()=>{
@@ -739,20 +800,24 @@ function updateRestUI(){
 }
 function endRest(beep){
   clearInterval(restInt);
+  releaseWakeLock();
   $restOverlay.classList.remove("show");
-  if(beep){ try{playBeep();}catch(e){} if(navigator.vibrate)navigator.vibrate([200,100,200]); showToast("¡A la próxima serie!"); }
+  if(beep){ try{playBeep();}catch(e){} if(navigator.vibrate)navigator.vibrate([300,120,300,120,300]); showToast("¡A la próxima serie!"); }
 }
 document.getElementById("restSkip").onclick=()=>endRest(false);
 document.getElementById("restAdd").onclick=()=>{restLeft+=15;restTotal=Math.max(restTotal,restLeft);updateRestUI();};
 function playBeep(){
   const ctx=new (window.AudioContext||window.webkitAudioContext)();
-  const o=ctx.createOscillator(),g=ctx.createGain();
-  o.connect(g);g.connect(ctx.destination);
-  o.frequency.value=880;o.type="sine";
-  g.gain.setValueAtTime(.001,ctx.currentTime);
-  g.gain.exponentialRampToValueAtTime(.3,ctx.currentTime+.01);
-  g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.5);
-  o.start();o.stop(ctx.currentTime+.5);
+  // triple beep, más difícil de no escuchar
+  [0,.6,1.2].forEach(t0=>{
+    const o=ctx.createOscillator(),g=ctx.createGain();
+    o.connect(g);g.connect(ctx.destination);
+    o.frequency.value=880;o.type="sine";
+    g.gain.setValueAtTime(.001,ctx.currentTime+t0);
+    g.gain.exponentialRampToValueAtTime(.35,ctx.currentTime+t0+.01);
+    g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+t0+.45);
+    o.start(ctx.currentTime+t0);o.stop(ctx.currentTime+t0+.5);
+  });
 }
 
 /* ===== MODAL EJERCICIO ===== */
@@ -891,34 +956,73 @@ function openSummary(){
   const now=new Date();
   const weekAgo=new Date(now);weekAgo.setDate(now.getDate()-6);
   function inWeek(key){const[y,m,d]=key.split("-").map(Number);const dt=new Date(y,m-1,d);return dt>=new Date(weekAgo.getFullYear(),weekAgo.getMonth(),weekAgo.getDate());}
-  let trainDays=new Set(),prs=0,totalSets=0;
-  // métrica robusta por entrada: si todos los sets son peso 0, mido por reps
-  function metricOf(e){
-    const allZero=e.sets.every(s=>!s.w);
-    return allZero?entryTopReps(e):entryTopWeight(e);
-  }
-  Object.values(state.history).forEach(arr=>{
+
+  // mapa exKey -> nombre lindo y flag bw, desde la rutina actual
+  const nameMap={};
+  DAYS.forEach(d=>state.routine[d].forEach(ex=>{nameMap[exKey(ex.n)]={n:ex.n,bw:!!ex.bw};}));
+
+  function metricOf(e,bw){ return bw?entryTopReps(e):entryTopWeight(e); }
+
+  let trainDates=new Set(),totalSets=0;
+  const records=[]; // {name, val, bw}
+  const progress=[]; // {name, delta, bw, cur}
+
+  Object.keys(state.history).forEach(key=>{
+    const arr=state.history[key];
+    const info=nameMap[key]||{n:key,bw:arr.length&&arr[arr.length-1].sets.every(s=>!s.w)};
+    // recorro entradas de la semana
     arr.forEach((e,i)=>{
-      if(inWeek(e.d)){
-        trainDays.add(e.d);
-        totalSets+=e.sets.length;
-        const prevMax=i>0?Math.max(...arr.slice(0,i).map(metricOf)):0;
-        if(i>0&&metricOf(e)>prevMax)prs++;
-      }
+      if(!inWeek(e.d))return;
+      trainDates.add(e.d);
+      totalSets+=e.sets.length;
     });
+    // progreso: última entrada de la semana vs la anterior a esa (de cualquier fecha)
+    let lastIdx=-1;
+    for(let i=arr.length-1;i>=0;i--){ if(inWeek(arr[i].d)){lastIdx=i;break;} }
+    if(lastIdx===-1)return;
+    const cur=metricOf(arr[lastIdx],info.bw);
+    // récord: supera todo lo anterior
+    if(lastIdx>0){
+      const prevMax=Math.max(...arr.slice(0,lastIdx).map(e=>metricOf(e,info.bw)));
+      if(cur>prevMax) records.push({name:info.n,val:cur,bw:info.bw});
+      const prev=metricOf(arr[lastIdx-1],info.bw);
+      progress.push({name:info.n,delta:cur-prev,bw:info.bw,cur});
+    }else{
+      progress.push({name:info.n,delta:null,bw:info.bw,cur}); // primera vez
+    }
   });
-  // ejercicios completados (tildados) en la ventana de 7 días
-  let doneCount=0;
-  Object.keys(state.checks).forEach(dk=>{
-    if(inWeek(dk)) doneCount+=Object.keys(state.checks[dk]).length;
-  });
+
+  // días entrenados como pills Lun..Dom
+  const trainedShort=new Set([...trainDates].map(k=>{
+    const[y,m,d]=k.split("-").map(Number);
+    return DAYS[(new Date(y,m-1,d).getDay()+6)%7];
+  }));
+  const daysHtml=DAYS.map(d=>`<span class="sw-day${trainedShort.has(d)?" on":""}">${d.slice(0,2)}${trainedShort.has(d)?" ✓":""}</span>`).join("");
+
+  function fmtVal(v,bw){ return bw?`${v} reps`:`${fmtW(v)}kg`; }
+  function fmtDelta(dl,bw){
+    if(dl===null)return`<span class="trend flat">primera vez</span>`;
+    if(dl>0)return`<span class="trend up">▲ +${bw?dl+" reps":fmtW(dl)+"kg"}</span>`;
+    if(dl<0)return`<span class="trend down">▼ ${bw?dl+" reps":fmtW(dl)+"kg"}</span>`;
+    return`<span class="trend flat">= igual</span>`;
+  }
+
+  const recHtml=records.length
+    ? records.map(r=>`<div class="sum-row"><span class="sum-name">🏆 ${r.name}</span><span class="sum-val trend up">${fmtVal(r.val,r.bw)}</span></div>`).join("")
+    : `<div class="sum-empty">Sin récords esta semana. La próxima cae.</div>`;
+
+  // ordeno progresos: subidas primero, después iguales, después bajadas
+  progress.sort((a,b)=>(b.delta??0)-(a.delta??0));
+  const progHtml=progress.length
+    ? progress.map(p=>`<div class="sum-row"><span class="sum-name">${p.name}</span><span class="sum-val">${fmtVal(p.cur,p.bw)} ${fmtDelta(p.delta,p.bw)}</span></div>`).join("")
+    : `<div class="sum-empty">Todavía no registraste entrenamientos esta semana.</div>`;
+
   document.getElementById("summarySub").textContent="Últimos 7 días · "+state.stageName;
-  const grid=document.getElementById("sumGrid");
-  grid.innerHTML=`
-    <div class="sum-card"><div class="v">${trainDays.size}</div><div class="l">días entrenados</div></div>
-    <div class="sum-card"><div class="v">${doneCount}</div><div class="l">ejercicios completados</div></div>
-    <div class="sum-card"><div class="v">${totalSets}</div><div class="l">series registradas</div></div>
-    <div class="sum-card"><div class="v">${prs}</div><div class="l">récords nuevos</div></div>`;
+  document.getElementById("sumGrid").innerHTML=`
+    <div class="sum-week">${daysHtml}</div>
+    <div class="sum-sec"><h4>Récords de la semana</h4>${recHtml}</div>
+    <div class="sum-sec"><h4>Cómo te fue en cada ejercicio</h4>${progHtml}</div>
+    <div class="sum-foot">${trainDates.size} ${trainDates.size===1?"día entrenado":"días entrenados"} · ${totalSets} series</div>`;
 }
 
 /* ===== TOGGLES ===== */
@@ -927,16 +1031,6 @@ $editToggle.onclick=()=>{
   $editToggle.classList.toggle("on",editMode);
   $editToggle.querySelector(".et-label").textContent=editMode?"Listo":"Editar";
   renderAll();
-};
-document.getElementById("resetDay").onclick=()=>{
-  const tk=todayKey();
-  const has=state.routine[currentDay].some(ex=>state.checks[tk]&&state.checks[tk][ex.id]);
-  if(has){
-    if(confirm("¿Destildar los ejercicios marcados hoy? (el historial no se borra)")){
-      state.routine[currentDay].forEach(ex=>{if(state.checks[tk])delete state.checks[tk][ex.id];});
-      save();renderMain();updateProgress();
-    }
-  }
 };
 function showToast(msg){
   const t=document.getElementById("toast");
