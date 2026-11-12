@@ -702,7 +702,7 @@ function applyTheme(){
 function render(){
   document.querySelectorAll(".nav button").forEach(b=>b.classList.toggle("on",b.dataset.view===view));
   if(view==="train")renderTrain();else if(view==="progress")renderProgress();else renderMore();
-  fx={pop:null,pr:null,complete:false};
+  fx={pop:null,pr:null,complete:false,ended:false};
   updateMini();
 }
 function ringSVG(done,total,size,sw){
@@ -720,6 +720,12 @@ function updateMini(){
 function onScroll(){$miniBar.classList.toggle("show",miniEnabled&&window.scrollY>$top.offsetHeight-12);}
 window.addEventListener("scroll",onScroll,{passive:true});
 $miniIn.onclick=()=>window.scrollTo({top:0,behavior:"smooth"});
+function finishToday(){
+  endSession();save();fx.ended=true;openCards.clear();
+  const m=sessionMinutes(todayKey(),false);
+  toast(m>=1?`Entrenamiento terminado · ${fmtMin(m)}`:"Entrenamiento terminado");
+  render();window.scrollTo({top:0,behavior:"smooth"});
+}
 function markPick(){state.todayPick={d:todayKey(),k:currentKey};}
 /* --- sugerencia de carga: si completaste todo lo planeado, subí; si no, mantené --- */
 function weightStep(w){return w>=40?5:2.5;}
@@ -738,15 +744,26 @@ function suggestFor(ex){
   return {up:false,w:top,txt:`Mantené ${fmtW(top)}kg`,why:`la última llegaste a ${target} reps en ${ok} de ${last.sets.length} series`};
 }
 /* --- duración: arranca con la primera acción del día y se cierra sola --- */
-const SESSION_IDLE=45*60000;
+/* La sesión termina cuando tocás "Terminar por hoy", cuando completás la rutina,
+   o sola si pasan 20 min sin tocar nada. En ese caso dura hasta la última serie que marcaste. */
+const SESSION_IDLE=20*60000;
 function touchSession(){
   const tk=todayKey(),now=Date.now(),S=state.sessions[tk];
-  if(!S)state.sessions[tk]={s:now,e:now};else S.e=now;
+  if(!S)state.sessions[tk]={s:now,e:now};else{S.e=now;delete S.closed;} // si seguís entrenando, se reabre
+}
+function sessionOpen(){
+  const S=state.sessions[todayKey()];
+  return !!S&&!S.closed&&Date.now()-S.e<SESSION_IDLE;
+}
+function endSession(){
+  const S=state.sessions[todayKey()];if(!S)return;
+  if(!S.closed&&Date.now()-S.e<SESSION_IDLE)S.e=Date.now();
+  S.closed=true;
 }
 function sessionMinutes(d,live){
   const S=state.sessions[d];if(!S)return null;
-  const now=Date.now(),ongoing=live&&d===todayKey()&&now-S.e<SESSION_IDLE;
-  return Math.round(((ongoing?now:S.e)-S.s)/60000);
+  const ongoing=live&&d===todayKey()&&sessionOpen();
+  return Math.round(((ongoing?Date.now():S.e)-S.s)/60000);
 }
 function fmtMin(m){return m>=60?`${Math.floor(m/60)} h ${String(m%60).padStart(2,"0")}`:`${m} min`;}
 
@@ -833,7 +850,7 @@ function renderTrain(){
   $top.innerHTML=`
     <div class="top-row">
       <button class="chip" id="stageChip">● ${esc(state.stageName)}</button>
-      <span class="top-r">${isToday&&sessionMinutes(tk,true)!==null&&done<total?`<span class="chip accent num" id="sessChip">⏱ ${fmtMin(sessionMinutes(tk,true))}</span>`:""}
+      <span class="top-r">${isToday&&sessionOpen()?`<button class="chip accent num" id="sessChip" aria-label="Terminar entrenamiento">⏱ ${fmtMin(sessionMinutes(tk,true))}</button>`:""}
       ${total?`<button class="chip${editMode?" on":""}" id="editBtn">${editMode?"Listo":"Editar"}</button>`:""}</span>
     </div>
     <div class="hero">
@@ -848,11 +865,24 @@ function renderTrain(){
     const names=new Set(exs.map(e=>exKey(e.n)));
     const sets=[...names].reduce((a,k)=>a+(state.history[k]||[]).filter(e=>e.d===st.last).reduce((x,e)=>x+e.sets.length,0),0);
     const today=st.last===tk,mins=sessionMinutes(st.last,false),dur=mins&&mins>=5?` · ${fmtMin(mins)}`:"";
-    $main.insertAdjacentHTML("beforeend",`<div class="done-banner${fx.complete?" fx-in":""}"><div class="em">${today?"💪":"✅"}</div><div class="db-t"><b>${today?"Rutina completa":"Ya la hiciste esta semana"}</b><span>${today?`${sets} series hoy${dur}`:`El ${fmtDow(st.last)}${sets?` · ${sets} series`:""}${dur}`}</span></div><button class="mini db-share" id="shareBtn">📤 Compartir</button></div>`);
+    $main.insertAdjacentHTML("beforeend",`<div class="done-banner${fx.complete?" fx-in":""}"><div class="em">${today?"💪":"✅"}</div><div class="db-t"><b>${today?"Rutina completa":"Ya la hiciste esta semana"}</b><span>${today?`${sets} ${sets===1?"serie":"series"} hoy${dur}`:`El ${fmtDow(st.last)}${sets?` · ${sets} series`:""}${dur}`}</span></div><button class="mini db-share" id="shareBtn">📤 Compartir</button></div>`);
     document.getElementById("shareBtn").onclick=()=>openShare(currentKey,st.last);
+  }
+  const doneToday=exs.filter(e=>wk[e.id]===tk).length,hasSess=!!state.sessions[tk];
+  if(done<total&&!editMode&&isToday&&hasSess&&!sessionOpen()&&doneToday){
+    const names=new Set(exs.map(e=>exKey(e.n)));
+    const sets=[...names].reduce((a,k)=>a+(state.history[k]||[]).filter(e=>e.d===tk).reduce((x,e)=>x+e.sets.length,0),0);
+    const mins=sessionMinutes(tk,false);
+    $main.insertAdjacentHTML("beforeend",`<div class="done-banner${fx.ended?" fx-in":""}"><div class="em">🏁</div><div class="db-t"><b>Terminaste por hoy</b><span>${doneToday} de ${total} ejercicios${sets?` · ${sets} ${sets===1?"serie":"series"}`:""}${mins>=1?` · ${fmtMin(mins)}`:""}</span></div><button class="mini db-share" id="shareBtn">📤 Compartir</button></div>`);
+    document.getElementById("shareBtn").onclick=()=>openShare(currentKey,tk);
   }
   const nextId=editMode?null:(exs.find(e=>!wk[e.id])||{}).id;
   exs.forEach((ex,idx)=>$main.appendChild(buildCard(ex,idx,!!wk[ex.id],ex.id===nextId)));
+  if(!editMode&&isToday&&sessionOpen()&&done<total){
+    $main.insertAdjacentHTML("beforeend",`<div class="stack"><button class="btn btn-ghost block" id="endBtn">🏁 Terminar por hoy</button></div>`);
+    document.getElementById("endBtn").onclick=finishToday;
+  }
+  const sc=document.getElementById("sessChip");if(sc)sc.onclick=finishToday;
   if(editMode){
     $main.insertAdjacentHTML("beforeend",`<div class="stack"><button class="btn btn-dash block" id="addLib">+ Agregar ejercicio</button></div>`);
     document.getElementById("addLib").onclick=()=>openLibrary();
@@ -921,7 +951,7 @@ function buildCard(ex,idx,checked,isNext){
       Object.keys(state.checks).forEach(d=>{if(d>=ws&&state.checks[d][ex.id]){delete state.checks[d][ex.id];if(!Object.keys(state.checks[d]).length)delete state.checks[d];}});
     }else{
       state.checks[tk]=state.checks[tk]||{};state.checks[tk][ex.id]=true;openCards.delete(ex.id);
-      fx.pop=ex.id;markPick();touchSession();if(routineWeek(currentKey).status==="done")fx.complete=true;
+      fx.pop=ex.id;markPick();touchSession();if(routineWeek(currentKey).status==="done"){fx.complete=true;endSession();}
       if(navigator.vibrate)navigator.vibrate(15);
     }
     save();render();
@@ -983,7 +1013,7 @@ function fillBody(card,ex,pr){
     const isPR=pr!==null&&val>pr;
     state.history[k].push({d:todayKey(),sets});
     const tk=todayKey();state.checks[tk]=state.checks[tk]||{};state.checks[tk][ex.id]=true;
-    markPick();touchSession();fx.pop=ex.id;if(isPR)fx.pr=ex.id;if(routineWeek(currentKey).status==="done")fx.complete=true;
+    markPick();touchSession();fx.pop=ex.id;if(isPR)fx.pr=ex.id;if(routineWeek(currentKey).status==="done"){fx.complete=true;endSession();}
     delete drafts[ex.id];saveDrafts();openCards.delete(ex.id);save();
     if(isPR){toast(`🏆 Récord: ${fmtW(val)}${ex.bw?" reps":"kg"}`,"pr");if(navigator.vibrate)navigator.vibrate([60,40,120]);}
     else toast("Guardado ✓");
@@ -1606,7 +1636,11 @@ window.addEventListener("beforeunload",e=>{
   if(Object.values(drafts).some(a=>Array.isArray(a)&&a.some(s=>s.done))){e.preventDefault();e.returnValue="";}
 });
 
-setInterval(()=>{const c=document.getElementById("sessChip");if(c){const m=sessionMinutes(todayKey(),true);if(m!==null)c.textContent="⏱ "+fmtMin(m);}},30000);
+setInterval(()=>{
+  const c=document.getElementById("sessChip");if(!c)return;
+  if(!sessionOpen()){if(view==="train"&&!$sheetBg.classList.contains("show"))render();return;}
+  const m=sessionMinutes(todayKey(),true);if(m!==null)c.textContent="⏱ "+fmtMin(m);
+},30000);
 document.addEventListener("visibilitychange",()=>{
   if(document.visibilityState!=="visible"||todayKey()===renderedDay)return;
   renderedDay=todayKey();drafts={};saveDrafts();openCards.clear();
